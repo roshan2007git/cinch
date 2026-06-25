@@ -5,13 +5,16 @@ declare global {
   var _mongoosePromise: Promise<typeof mongoose> | undefined;
 }
 
-function connectDB(): Promise<typeof mongoose> {
+async function connectDB(): Promise<typeof mongoose> {
   const uri = process.env.MONGODB_URI;
   if (!uri) throw new Error("MONGODB_URI is not defined");
 
-  if (global._mongoosePromise) return global._mongoosePromise;
-
-  global._mongoosePromise = mongoose.connect(uri, { bufferCommands: false });
+  if (!global._mongoosePromise) {
+    global._mongoosePromise = mongoose.connect(uri, { bufferCommands: false }).catch((err) => {
+      global._mongoosePromise = undefined;
+      throw err;
+    });
+  }
   return global._mongoosePromise;
 }
 
