@@ -10,24 +10,32 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  await getOrCreateGuestUserId(req); // ensures cookie is set
-  const { id } = await params;
-  const { amount, currency = "inr" } = await req.json();
+  try {
+    await getOrCreateGuestUserId(req); // ensures cookie is set
+    const { id } = await params;
+    const { amount, currency = "inr" } = await req.json();
 
-  if (typeof amount !== "number" || amount <= 0) {
-    return Response.json({ error: "amount must be a positive number" }, { status: 400 });
+    if (typeof amount !== "number" || amount <= 0) {
+      return Response.json({ error: "amount must be a positive number" }, { status: 400 });
+    }
+
+    await connectDB();
+
+    const order = await Order.findById(id);
+    if (!order) {
+      return Response.json({ error: "Order not found" }, { status: 404 });
+    }
+
+    order.quote = { amount, currency };
+    order.status = "quoted";
+    await order.save();
+
+    return Response.json({ orderId: order._id, status: order.status, quote: order.quote });
+  } catch (err) {
+    console.error("[orders/id/quote] Unhandled error:", err instanceof Error ? err.stack : err);
+    return Response.json(
+      { error: err instanceof Error ? err.message : "Unknown server error" },
+      { status: 500 }
+    );
   }
-
-  await connectDB();
-
-  const order = await Order.findById(id);
-  if (!order) {
-    return Response.json({ error: "Order not found" }, { status: 404 });
-  }
-
-  order.quote = { amount, currency };
-  order.status = "quoted";
-  await order.save();
-
-  return Response.json({ orderId: order._id, status: order.status, quote: order.quote });
 }

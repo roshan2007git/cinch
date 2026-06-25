@@ -30,18 +30,23 @@ export async function getOrCreateGuestUserId(
   }
 
   // 3. Create a new anonymous user
-  await connectDB();
-  const user = await User.create({
-    email: `guest_${Date.now()}_${Math.random().toString(36).slice(2)}@cinch.guest`,
-    name: "Guest",
-    plan: "free",
-  });
+  try {
+    await connectDB();
+    const user = await User.create({
+      email: `guest_${Date.now()}_${Math.random().toString(36).slice(2)}@cinch.guest`,
+      name: "Guest",
+      plan: "free",
+    });
 
-  const id = String(user._id);
+    const id = String(user._id);
 
-  // 4. Set the cookie on the next response via next/headers (works in Route Handlers)
-  const cookieStore = await cookies();
-  cookieStore.set(COOKIE, id, COOKIE_OPTS);
+    // 4. Set the cookie on the next response via next/headers (works in Route Handlers)
+    const cookieStore = await cookies();
+    cookieStore.set(COOKIE, id, COOKIE_OPTS);
 
-  return id;
+    return id;
+  } catch (err) {
+    console.error("[guest-auth] Guest user creation failed:", err instanceof Error ? err.stack : err);
+    throw new Error("Guest user creation failed");
+  }
 }
