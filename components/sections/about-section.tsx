@@ -77,10 +77,14 @@ export default function AboutSection() {
             <div className="relative">
               <div className="absolute -top-6 -left-6 border border-[#C4974A] w-full h-full" />
 
-              <div className="relative bg-[#E8E4DC] h-150 flex items-center justify-center">
-                <span className="text-[#8A8880]">
-                  Brand Image
-                </span>
+              {/* TODO: replace with <Image src="/brand-photo.jpg" ... /> once uploaded */}
+              <div className="relative bg-[#1A1A1A] h-[520px] flex flex-col items-center justify-center gap-6">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none">
+                  <path d="M5 19L19 5" stroke="#C4974A" strokeWidth="1.5" />
+                  <circle cx="19" cy="5" r="3" fill="#C4974A" />
+                </svg>
+                <span className="font-heading text-5xl tracking-[0.25em] text-white">CINCH</span>
+                <p className="text-[#8A8880] text-sm tracking-widest uppercase">Tailored by AI. Made by hand.</p>
               </div>
             </div>
           </motion.div>
