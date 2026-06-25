@@ -1,0 +1,46 @@
+import { NextRequest } from "next/server";
+import connectDB from "@/lib/db";
+import Order from "@/lib/models/order";
+import { getStubUserId } from "@/lib/auth";
+
+export async function POST(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const userId = await getStubUserId(req);
+  if (!userId) {
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const { id } = await params;
+  const { variationId } = await req.json();
+
+  if (!variationId) {
+    return Response.json({ error: "variationId is required" }, { status: 400 });
+  }
+
+  await connectDB();
+
+  const order = await Order.findOne({ _id: id, user: userId });
+  if (!order) {
+    return Response.json({ error: "Order not found" }, { status: 404 });
+  }
+
+  if (order.status !== "awaiting_selection") {
+    return Response.json(
+      { error: `Cannot select variation when order status is '${order.status}'` },
+      { status: 409 }
+    );
+  }
+
+  const variation = order.variations.find((v) => String(v._id) === variationId);
+  if (!variation) {
+    return Response.json({ error: "Variation not found in this order" }, { status: 404 });
+  }
+
+  order.selectedVariationId = variationId;
+  order.status = "pending_quote";
+  await order.save();
+
+  return Response.json({ orderId: order._id, status: order.status });
+}
