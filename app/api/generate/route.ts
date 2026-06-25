@@ -108,6 +108,10 @@ Example:
       )
     );
 
+    imageResults.forEach((r, i) => {
+      if (r.status === "rejected") console.error(`[generate] Image ${i} failed:`, r.reason);
+    });
+
     variations = variations.map((v: Record<string, unknown>, i: number) => {
       const result = imageResults[i];
       if (result.status !== "fulfilled") return v;
