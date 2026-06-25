@@ -29,12 +29,6 @@ const emptyMeasurements: Measurements = {
   inseam: "",
 };
 
-// TODO: replace with real auth
-function getUserId(): string | null {
-  if (typeof window === "undefined") return null;
-  return localStorage.getItem("userId");
-}
-
 export default function ProfileModal() {
   const { profileOpen, closeProfile } = useModalStore();
 
@@ -47,12 +41,6 @@ export default function ProfileModal() {
   }
 
   async function handleSaveMeasurements() {
-    const userId = getUserId();
-    if (!userId) {
-      toast.error("Please log in first. (Set userId in localStorage for now.)");
-      return;
-    }
-
     // Convert non-empty strings to numbers; leave undefined if blank
     const payload = Object.fromEntries(
       Object.entries(measurements).map(([k, v]) => [
@@ -65,10 +53,7 @@ export default function ProfileModal() {
     try {
       const res = await fetch("/api/measurements", {
         method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          "x-user-id": userId,
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
 

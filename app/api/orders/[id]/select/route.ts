@@ -1,17 +1,13 @@
 import { NextRequest } from "next/server";
 import connectDB from "@/lib/db";
 import Order from "@/lib/models/order";
-import { getStubUserId } from "@/lib/auth";
+import { getOrCreateGuestUserId } from "@/lib/guest-auth";
 
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const userId = await getStubUserId(req);
-  if (!userId) {
-    return Response.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
+  const userId = await getOrCreateGuestUserId(req);
   const { id } = await params;
   const { variationId } = await req.json();
 
@@ -38,9 +34,15 @@ export async function POST(
     return Response.json({ error: "Variation not found in this order" }, { status: 404 });
   }
 
+  // Auto-quote from the AI-estimated price — no manual tailor step needed
   order.selectedVariationId = variationId;
-  order.status = "pending_quote";
+  order.quote = { amount: variation.estimatedPriceInr, currency: "inr" };
+  order.status = "quoted";
   await order.save();
 
-  return Response.json({ orderId: order._id, status: order.status });
+  return Response.json({
+    orderId: order._id,
+    status: order.status,
+    quote: order.quote,
+  });
 }

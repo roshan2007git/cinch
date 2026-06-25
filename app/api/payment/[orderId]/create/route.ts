@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import Stripe from "stripe";
 import connectDB from "@/lib/db";
 import Order from "@/lib/models/order";
-import { getStubUserId } from "@/lib/auth";
+import { getOrCreateGuestUserId } from "@/lib/guest-auth";
 
 function getStripe() {
   const key = process.env.STRIPE_SECRET_KEY;
@@ -14,11 +14,7 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ orderId: string }> }
 ) {
-  const userId = await getStubUserId(req);
-  if (!userId) {
-    return Response.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
+  const userId = await getOrCreateGuestUserId(req);
   const { orderId } = await params;
 
   await connectDB();
@@ -41,7 +37,7 @@ export async function POST(
 
   const stripe = getStripe();
   const paymentIntent = await stripe.paymentIntents.create({
-    amount: Math.round(order.quote.amount * 100), // paise (INR smallest unit)
+    amount: Math.round(order.quote.amount * 100), // paise
     currency: order.quote.currency ?? "inr",
     metadata: { cinchOrderId: String(order._id), userId: String(userId) },
   });

@@ -23,6 +23,7 @@ interface Variation {
   name: string;
   description: string;
   estimatedMeasurements: Record<string, string>;
+  estimatedPriceInr: number;
 }
 
 interface GenerateResult {
@@ -31,13 +32,7 @@ interface GenerateResult {
   remaining: number | null;
 }
 
-type Step = "generate" | "variations" | "awaiting_quote" | "payment" | "confirmed";
-
-// TODO: replace with real auth — reads userId from localStorage for now
-function getUserId(): string | null {
-  if (typeof window === "undefined") return null;
-  return localStorage.getItem("userId");
-}
+type Step = "generate" | "variations" | "payment" | "confirmed";
 
 // ─── Stripe payment sub-form ──────────────────────────────────────────────────
 
@@ -74,13 +69,9 @@ function PaymentForm({
       }
 
       // Verify server-side — never trust frontend claim alone
-      const userId = getUserId();
       const res = await fetch("/api/payment/verify", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(userId ? { "x-user-id": userId } : {}),
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           paymentIntentId: paymentIntent.id,
           cinchOrderId: orderId,
@@ -134,7 +125,6 @@ export default function AIStudioModal() {
   const [result, setResult] = useState<GenerateResult | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selecting, setSelecting] = useState(false);
-  const [checkingQuote, setCheckingQuote] = useState(false);
   const [quote, setQuote] = useState<{ amount: number; currency: string } | null>(null);
   const [clientSecret, setClientSecret] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -159,17 +149,13 @@ export default function AIStudioModal() {
       toast.error("Please describe your design first.");
       return;
     }
-    const userId = getUserId();
-    if (!userId) {
-      toast.error("Please log in first. (Set userId in localStorage for now.)");
-      return;
-    }
 
     setLoading(true);
     try {
       const res = await fetch("/api/generate", {
         method: "POST",
-        headers: { "Content-Type": "application/json", "x-user-id": userId },
+        headers: { "Content-Type": "application/json" },
+        // TODO: upload inspiration images and pass real URLs here instead of []
         body: JSON.stringify({ prompt, inspirationImageUrls: [] }),
       });
       const data = await res.json();
@@ -188,63 +174,31 @@ export default function AIStudioModal() {
 
   async function handleSelect(variationId: string) {
     if (!result) return;
-    const userId = getUserId();
-    if (!userId) return;
 
     setSelecting(true);
     setSelectedId(variationId);
     try {
       const res = await fetch(`/api/orders/${result.orderId}/select`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", "x-user-id": userId },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ variationId }),
       });
       const data = await res.json();
       if (!res.ok) {
         toast.error(data.error ?? "Failed to select design.");
         setSelectedId(null);
-      } else {
-        setStep("awaiting_quote");
-      }
-    } catch {
-      toast.error("Network error. Please try again.");
-      setSelectedId(null);
-    } finally {
-      setSelecting(false);
-    }
-  }
-
-  async function handleCheckQuote() {
-    if (!result) return;
-    const userId = getUserId();
-    if (!userId) return;
-
-    setCheckingQuote(true);
-    try {
-      const res = await fetch(`/api/orders/${result.orderId}`, {
-        headers: { "x-user-id": userId },
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        toast.error(data.error ?? "Could not fetch order.");
         return;
       }
 
-      if (data.status !== "quoted" || !data.quote) {
-        toast("Quote not ready yet — our team is still reviewing your design.", {
-          icon: "⏳",
-        });
-        return;
-      }
-
-      // Quote is ready — create a PaymentIntent and move to payment step
+      // Select route now returns quote immediately — go straight to payment
       const piRes = await fetch(`/api/payment/${result.orderId}/create`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", "x-user-id": userId },
+        headers: { "Content-Type": "application/json" },
       });
       const piData = await piRes.json();
       if (!piRes.ok) {
         toast.error(piData.error ?? "Could not create payment.");
+        setSelectedId(null);
         return;
       }
 
@@ -253,8 +207,9 @@ export default function AIStudioModal() {
       setStep("payment");
     } catch {
       toast.error("Network error. Please try again.");
+      setSelectedId(null);
     } finally {
-      setCheckingQuote(false);
+      setSelecting(false);
     }
   }
 
@@ -368,35 +323,7 @@ export default function AIStudioModal() {
         </div>
       )}
 
-      {/* ── Step 3: awaiting quote ────────────────────────────────────────── */}
-      {step === "awaiting_quote" && (
-        <div className="text-center py-8">
-          <Sparkles className="mx-auto text-[#C4974A]" size={40} />
-          <h2 className="font-heading text-4xl mt-6">Design Submitted</h2>
-          <p className="mt-4 text-[#8A8880] max-w-sm mx-auto leading-7">
-            Our team is reviewing your selection and will prepare a custom quote.
-            Check back here once you've been notified.
-          </p>
-
-          <button
-            onClick={handleCheckQuote}
-            disabled={checkingQuote}
-            className="mt-10 inline-flex items-center gap-2 border border-[#1A1A1A] px-8 py-4 disabled:opacity-60"
-          >
-            {checkingQuote && <Loader2 size={16} className="animate-spin" />}
-            {checkingQuote ? "Checking…" : "Check for Quote"}
-          </button>
-
-          <button
-            onClick={handleClose}
-            className="mt-4 block mx-auto text-sm text-[#8A8880] underline"
-          >
-            Close
-          </button>
-        </div>
-      )}
-
-      {/* ── Step 4: payment (Stripe Elements) ────────────────────────────── */}
+      {/* ── Step 3: payment (Stripe Elements) ────────────────────────────── */}
       {step === "payment" && clientSecret && quote && result && (
         <div>
           <h2 className="font-heading text-4xl mb-2">Complete Your Order</h2>
@@ -426,7 +353,7 @@ export default function AIStudioModal() {
           </Elements>
 
           <button
-            onClick={() => setStep("awaiting_quote")}
+            onClick={() => setStep("variations")}
             className="mt-4 text-sm text-[#8A8880] underline"
           >
             ← Back

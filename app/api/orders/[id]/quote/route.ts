@@ -1,18 +1,16 @@
 import { NextRequest } from "next/server";
 import connectDB from "@/lib/db";
 import Order from "@/lib/models/order";
-import { getStubUserId } from "@/lib/auth";
+import { getOrCreateGuestUserId } from "@/lib/guest-auth";
 
-// PATCH /api/orders/[id]/quote — set quote on an order (tailor-side action)
+// PATCH /api/orders/[id]/quote — override quote (tailor/admin action)
+// In normal flow quotes are set automatically by the select route.
+// TODO: when real auth exists, restrict this to tailor/admin roles.
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const userId = await getStubUserId(req);
-  if (!userId) {
-    return Response.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
+  await getOrCreateGuestUserId(req); // ensures cookie is set
   const { id } = await params;
   const { amount, currency = "inr" } = await req.json();
 
@@ -22,17 +20,9 @@ export async function PATCH(
 
   await connectDB();
 
-  // TODO: when real auth exists, restrict this to tailor/admin roles
   const order = await Order.findById(id);
   if (!order) {
     return Response.json({ error: "Order not found" }, { status: 404 });
-  }
-
-  if (order.status !== "pending_quote") {
-    return Response.json(
-      { error: `Cannot quote when order status is '${order.status}'` },
-      { status: 409 }
-    );
   }
 
   order.quote = { amount, currency };

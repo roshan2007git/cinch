@@ -5,6 +5,7 @@ export interface IVariation {
   name: string;
   description: string;
   estimatedMeasurements: Record<string, string>;
+  estimatedPriceInr: number;
 }
 
 export interface IOrder extends Document {
@@ -18,7 +19,6 @@ export interface IOrder extends Document {
   selectedVariationId?: string;
   status:
     | "awaiting_selection"
-    | "pending_quote"
     | "quoted"
     | "paid"
     | "in_production"
@@ -37,6 +37,7 @@ const VariationSchema = new Schema<IVariation>({
   name: { type: String, required: true },
   description: { type: String, required: true },
   estimatedMeasurements: { type: Map, of: String, default: {} },
+  estimatedPriceInr: { type: Number, required: true },
 });
 
 const OrderSchema = new Schema<IOrder>(
@@ -53,7 +54,6 @@ const OrderSchema = new Schema<IOrder>(
       type: String,
       enum: [
         "awaiting_selection",
-        "pending_quote",
         "quoted",
         "paid",
         "in_production",

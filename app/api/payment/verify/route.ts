@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import Stripe from "stripe";
 import connectDB from "@/lib/db";
 import Order from "@/lib/models/order";
-import { getStubUserId } from "@/lib/auth";
+import { getOrCreateGuestUserId } from "@/lib/guest-auth";
 
 function getStripe() {
   const key = process.env.STRIPE_SECRET_KEY;
@@ -11,11 +11,7 @@ function getStripe() {
 }
 
 export async function POST(req: NextRequest) {
-  const userId = await getStubUserId(req);
-  if (!userId) {
-    return Response.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
+  const userId = await getOrCreateGuestUserId(req);
   const { paymentIntentId, cinchOrderId } = await req.json();
 
   if (!paymentIntentId || !cinchOrderId) {
