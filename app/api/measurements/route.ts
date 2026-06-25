@@ -1,25 +1,13 @@
 import { NextRequest } from "next/server";
 import connectDB from "@/lib/db";
 import User from "@/lib/models/user";
-import { getStubUserId } from "@/lib/auth";
+import { getOrCreateGuestUserId } from "@/lib/guest-auth";
 
 export async function PUT(req: NextRequest) {
-  const userId = await getStubUserId(req);
-  if (!userId) {
-    return Response.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const userId = await getOrCreateGuestUserId(req);
 
   const body = await req.json();
-  const {
-    height,
-    weight,
-    chest,
-    waist,
-    hips,
-    shoulderWidth,
-    sleeveLength,
-    inseam,
-  } = body;
+  const { height, weight, chest, waist, hips, shoulderWidth, sleeveLength, inseam } = body;
 
   await connectDB();
 
