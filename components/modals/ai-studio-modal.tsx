@@ -85,6 +85,9 @@ function PaymentForm({
       }
 
       onSuccess();
+    } catch (err) {
+      console.error("handlePay error:", err);
+      toast.error("An unexpected error occurred. Please try again.");
     } finally {
       setPaying(false);
     }
@@ -165,7 +168,8 @@ export default function AIStudioModal() {
       }
       setResult(data as GenerateResult);
       setStep("variations");
-    } catch {
+    } catch (err) {
+      console.error("handleGenerate error:", err);
       toast.error("Network error. Please try again.");
     } finally {
       setLoading(false);
@@ -205,7 +209,8 @@ export default function AIStudioModal() {
       setQuote(data.quote);
       setClientSecret(piData.clientSecret);
       setStep("payment");
-    } catch {
+    } catch (err) {
+      console.error("handleSelect error:", err);
       toast.error("Network error. Please try again.");
       setSelectedId(null);
     } finally {

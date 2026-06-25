@@ -4,6 +4,8 @@ import connectDB from "@/lib/db";
 import Order from "@/lib/models/order";
 import { getOrCreateGuestUserId } from "@/lib/guest-auth";
 
+export const maxDuration = 60;
+
 function getStripe() {
   const key = process.env.STRIPE_SECRET_KEY;
   if (!key) throw new Error("STRIPE_SECRET_KEY is not configured");
@@ -17,7 +19,11 @@ export async function POST(
   const userId = await getOrCreateGuestUserId(req);
   const { orderId } = await params;
 
-  await connectDB();
+  try {
+    await connectDB();
+  } catch {
+    return Response.json({ error: "Database connection failed" }, { status: 500 });
+  }
 
   const order = await Order.findOne({ _id: orderId, user: userId });
   if (!order) {

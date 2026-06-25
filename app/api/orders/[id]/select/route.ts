@@ -1,5 +1,7 @@
 import { NextRequest } from "next/server";
 import connectDB from "@/lib/db";
+
+export const maxDuration = 60;
 import Order from "@/lib/models/order";
 import { getOrCreateGuestUserId } from "@/lib/guest-auth";
 
@@ -15,7 +17,11 @@ export async function POST(
     return Response.json({ error: "variationId is required" }, { status: 400 });
   }
 
-  await connectDB();
+  try {
+    await connectDB();
+  } catch {
+    return Response.json({ error: "Database connection failed" }, { status: 500 });
+  }
 
   const order = await Order.findOne({ _id: id, user: userId });
   if (!order) {

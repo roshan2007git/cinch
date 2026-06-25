@@ -1,5 +1,7 @@
 import { NextRequest } from "next/server";
 import { GoogleGenAI } from "@google/genai";
+
+export const maxDuration = 60;
 import connectDB from "@/lib/db";
 import User from "@/lib/models/user";
 import Order from "@/lib/models/order";
@@ -25,7 +27,11 @@ export async function POST(req: NextRequest) {
     return Response.json({ error: "prompt is required" }, { status: 400 });
   }
 
-  await connectDB();
+  try {
+    await connectDB();
+  } catch {
+    return Response.json({ error: "Database connection failed" }, { status: 500 });
+  }
 
   const user = await User.findById(userId);
   if (!user) {
