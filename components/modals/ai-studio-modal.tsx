@@ -24,6 +24,7 @@ interface Variation {
   description: string;
   estimatedMeasurements: Record<string, string>;
   estimatedPriceInr: number;
+  imageUrl?: string;
 }
 
 interface GenerateResult {
@@ -288,7 +289,9 @@ export default function AIStudioModal() {
                     : "border-[#E8E4DC]"
                 }`}
               >
-                <div className="h-64 bg-[#E8E4DC] transition group-hover:scale-105" />
+                {variation.imageUrl
+                  ? <img src={variation.imageUrl} className="h-64 w-full object-cover" alt={variation.name} />
+                  : <div className="h-64 bg-[#E8E4DC]" />}
                 <div className="p-5">
                   <h3 className="font-heading text-2xl">{variation.name}</h3>
                   <p className="mt-2 text-sm text-[#8A8880] leading-6">

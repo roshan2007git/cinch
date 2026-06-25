@@ -97,6 +97,25 @@ Example:
         : 3000,
     }));
 
+    // Generate one image per variation — non-blocking: failures fall back to no image
+    const imageResults = await Promise.allSettled(
+      variations.map((v: Record<string, unknown>) =>
+        ai.models.generateContent({
+          model: "gemini-3-pro-image-preview",
+          contents: `Product photo of a garment: ${v.name}. ${v.description}. Clean studio background, fashion catalog style.`,
+          config: { imageConfig: { aspectRatio: "1:1", imageSize: "1K" } },
+        })
+      )
+    );
+
+    variations = variations.map((v: Record<string, unknown>, i: number) => {
+      const result = imageResults[i];
+      if (result.status !== "fulfilled") return v;
+      const part = result.value.candidates?.[0]?.content?.parts?.find((p: Record<string, unknown>) => p.inlineData);
+      if (!part?.inlineData) return v;
+      return { ...v, imageUrl: `data:image/png;base64,${(part.inlineData as Record<string, unknown>).data}` };
+    });
+
     const order = await Order.create({
       user: userId,
       designInput: { text: prompt, inspirationImageUrls },

@@ -6,6 +6,7 @@ export interface IVariation {
   description: string;
   estimatedMeasurements: Record<string, string>;
   estimatedPriceInr: number;
+  imageUrl?: string;
 }
 
 export interface IOrder extends Document {
@@ -38,6 +39,7 @@ const VariationSchema = new Schema<IVariation>({
   description: { type: String, required: true },
   estimatedMeasurements: { type: Map, of: String, default: {} },
   estimatedPriceInr: { type: Number, required: true },
+  imageUrl: { type: String },
 });
 
 const OrderSchema = new Schema<IOrder>(
