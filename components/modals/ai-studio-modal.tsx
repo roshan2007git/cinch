@@ -1,11 +1,22 @@
 "use client";
 
-import { useState, useRef } from "react";
-import { Sparkles, Upload, Loader2 } from "lucide-react";
+import { useState, useRef, useCallback } from "react";
+import { Sparkles, Upload, Loader2, CheckCircle } from "lucide-react";
 import toast from "react-hot-toast";
+import { loadStripe } from "@stripe/stripe-js";
+import {
+  Elements,
+  PaymentElement,
+  useStripe,
+  useElements,
+} from "@stripe/react-stripe-js";
 
 import Modal from "@/components/ui/modal";
 import { useModalStore } from "../../lib/stores/modal-store";
+
+const stripePromise = loadStripe(
+  process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!
+);
 
 interface Variation {
   _id: string;
@@ -20,32 +31,127 @@ interface GenerateResult {
   remaining: number | null;
 }
 
+type Step = "generate" | "variations" | "awaiting_quote" | "payment" | "confirmed";
+
 // TODO: replace with real auth — reads userId from localStorage for now
 function getUserId(): string | null {
   if (typeof window === "undefined") return null;
   return localStorage.getItem("userId");
 }
 
+// ─── Stripe payment sub-form ──────────────────────────────────────────────────
+
+function PaymentForm({
+  orderId,
+  quoteAmount,
+  onSuccess,
+}: {
+  orderId: string;
+  quoteAmount: number;
+  onSuccess: () => void;
+}) {
+  const stripe = useStripe();
+  const elements = useElements();
+  const [paying, setPaying] = useState(false);
+
+  async function handlePay() {
+    if (!stripe || !elements) return;
+    setPaying(true);
+    try {
+      const { error, paymentIntent } = await stripe.confirmPayment({
+        elements,
+        redirect: "if_required",
+      });
+
+      if (error) {
+        toast.error(error.message ?? "Payment failed.");
+        return;
+      }
+
+      if (!paymentIntent) {
+        toast.error("No payment result returned.");
+        return;
+      }
+
+      // Verify server-side — never trust frontend claim alone
+      const userId = getUserId();
+      const res = await fetch("/api/payment/verify", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(userId ? { "x-user-id": userId } : {}),
+        },
+        body: JSON.stringify({
+          paymentIntentId: paymentIntent.id,
+          cinchOrderId: orderId,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data.error ?? "Payment verification failed.");
+        return;
+      }
+
+      onSuccess();
+    } finally {
+      setPaying(false);
+    }
+  }
+
+  return (
+    <div>
+      <div className="mb-6 p-4 bg-[#FAF8F5] border border-[#E8E4DC] text-center">
+        <p className="text-[#8A8880] text-sm">Amount due</p>
+        <p className="font-heading text-4xl mt-1">
+          ₹{quoteAmount.toLocaleString("en-IN")}
+        </p>
+      </div>
+
+      <PaymentElement />
+
+      <button
+        onClick={handlePay}
+        disabled={!stripe || paying}
+        className="w-full mt-6 bg-[#1A1A1A] text-white py-4 flex items-center justify-center gap-2 disabled:opacity-60"
+      >
+        {paying && <Loader2 size={18} className="animate-spin" />}
+        {paying ? "Processing…" : "Pay Now"}
+      </button>
+    </div>
+  );
+}
+
+// ─── Main modal ───────────────────────────────────────────────────────────────
+
 export default function AIStudioModal() {
   const { aiOpen, closeAI } = useModalStore();
 
+  const [step, setStep] = useState<Step>("generate");
   const [prompt, setPrompt] = useState("");
   const [images, setImages] = useState<File[]>([]);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<GenerateResult | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selecting, setSelecting] = useState(false);
+  const [checkingQuote, setCheckingQuote] = useState(false);
+  const [quote, setQuote] = useState<{ amount: number; currency: string } | null>(null);
+  const [clientSecret, setClientSecret] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  const reset = useCallback(() => {
+    setStep("generate");
+    setPrompt("");
+    setImages([]);
+    setResult(null);
+    setSelectedId(null);
+    setQuote(null);
+    setClientSecret(null);
+  }, []);
 
   function handleClose() {
     closeAI();
-    // Reset state after close animation
-    setTimeout(() => {
-      setPrompt("");
-      setImages([]);
-      setResult(null);
-      setSelectedId(null);
-    }, 300);
+    setTimeout(reset, 300);
   }
 
   async function handleGenerate() {
@@ -53,7 +159,6 @@ export default function AIStudioModal() {
       toast.error("Please describe your design first.");
       return;
     }
-
     const userId = getUserId();
     if (!userId) {
       toast.error("Please log in first. (Set userId in localStorage for now.)");
@@ -64,25 +169,16 @@ export default function AIStudioModal() {
     try {
       const res = await fetch("/api/generate", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-user-id": userId,
-        },
-        body: JSON.stringify({
-          prompt,
-          // Image upload to cloud storage not yet implemented — pass empty for now
-          inspirationImageUrls: [],
-        }),
+        headers: { "Content-Type": "application/json", "x-user-id": userId },
+        body: JSON.stringify({ prompt, inspirationImageUrls: [] }),
       });
-
       const data = await res.json();
-
       if (!res.ok) {
         toast.error(data.error ?? "Failed to generate designs.");
         return;
       }
-
       setResult(data as GenerateResult);
+      setStep("variations");
     } catch {
       toast.error("Network error. Please try again.");
     } finally {
@@ -100,20 +196,15 @@ export default function AIStudioModal() {
     try {
       const res = await fetch(`/api/orders/${result.orderId}/select`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-user-id": userId,
-        },
+        headers: { "Content-Type": "application/json", "x-user-id": userId },
         body: JSON.stringify({ variationId }),
       });
-
       const data = await res.json();
       if (!res.ok) {
         toast.error(data.error ?? "Failed to select design.");
         setSelectedId(null);
       } else {
-        toast.success("Design selected! A quote will be prepared for you.");
-        handleClose();
+        setStep("awaiting_quote");
       }
     } catch {
       toast.error("Network error. Please try again.");
@@ -123,9 +214,54 @@ export default function AIStudioModal() {
     }
   }
 
+  async function handleCheckQuote() {
+    if (!result) return;
+    const userId = getUserId();
+    if (!userId) return;
+
+    setCheckingQuote(true);
+    try {
+      const res = await fetch(`/api/orders/${result.orderId}`, {
+        headers: { "x-user-id": userId },
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data.error ?? "Could not fetch order.");
+        return;
+      }
+
+      if (data.status !== "quoted" || !data.quote) {
+        toast("Quote not ready yet — our team is still reviewing your design.", {
+          icon: "⏳",
+        });
+        return;
+      }
+
+      // Quote is ready — create a PaymentIntent and move to payment step
+      const piRes = await fetch(`/api/payment/${result.orderId}/create`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-user-id": userId },
+      });
+      const piData = await piRes.json();
+      if (!piRes.ok) {
+        toast.error(piData.error ?? "Could not create payment.");
+        return;
+      }
+
+      setQuote(data.quote);
+      setClientSecret(piData.clientSecret);
+      setStep("payment");
+    } catch {
+      toast.error("Network error. Please try again.");
+    } finally {
+      setCheckingQuote(false);
+    }
+  }
+
   return (
     <Modal open={aiOpen} onClose={handleClose}>
-      {!result ? (
+      {/* ── Step 1: prompt ───────────────────────────────────────────────── */}
+      {step === "generate" && (
         <div>
           <div className="text-center mb-10">
             <Sparkles className="mx-auto text-[#C4974A]" size={40} />
@@ -172,35 +308,43 @@ export default function AIStudioModal() {
             {loading ? "Generating…" : "Generate Concepts"}
           </button>
         </div>
-      ) : (
+      )}
+
+      {/* ── Step 2: variation grid ────────────────────────────────────────── */}
+      {step === "variations" && result && (
         <div>
           <h2 className="font-heading text-5xl mb-3">Design Concepts</h2>
-          <p className="text-[#8A8880] mb-10">Generated concepts based on your vision.</p>
+          <p className="text-[#8A8880] mb-10">
+            Generated concepts based on your vision. Select one to proceed.
+          </p>
 
           <div className="grid md:grid-cols-2 gap-6">
             {result.variations.map((variation) => (
               <div
                 key={variation._id}
-                className="border border-[#E8E4DC] overflow-hidden group"
+                className={`border overflow-hidden group transition ${
+                  selectedId === variation._id
+                    ? "border-[#C4974A]"
+                    : "border-[#E8E4DC]"
+                }`}
               >
                 <div className="h-64 bg-[#E8E4DC] transition group-hover:scale-105" />
-
                 <div className="p-5">
                   <h3 className="font-heading text-2xl">{variation.name}</h3>
                   <p className="mt-2 text-sm text-[#8A8880] leading-6">
                     {variation.description}
                   </p>
-
                   {Object.keys(variation.estimatedMeasurements).length > 0 && (
                     <ul className="mt-3 text-xs text-[#8A8880] space-y-1">
-                      {Object.entries(variation.estimatedMeasurements).map(([k, v]) => (
-                        <li key={k}>
-                          <span className="capitalize">{k}</span>: {v}
-                        </li>
-                      ))}
+                      {Object.entries(variation.estimatedMeasurements).map(
+                        ([k, v]) => (
+                          <li key={k}>
+                            <span className="capitalize">{k}</span>: {v}
+                          </li>
+                        )
+                      )}
                     </ul>
                   )}
-
                   <button
                     onClick={() => handleSelect(variation._id)}
                     disabled={selecting}
@@ -216,10 +360,94 @@ export default function AIStudioModal() {
           </div>
 
           <button
-            onClick={() => setResult(null)}
+            onClick={() => setStep("generate")}
             className="mt-8 text-sm text-[#8A8880] underline"
           >
             ← Start over
+          </button>
+        </div>
+      )}
+
+      {/* ── Step 3: awaiting quote ────────────────────────────────────────── */}
+      {step === "awaiting_quote" && (
+        <div className="text-center py-8">
+          <Sparkles className="mx-auto text-[#C4974A]" size={40} />
+          <h2 className="font-heading text-4xl mt-6">Design Submitted</h2>
+          <p className="mt-4 text-[#8A8880] max-w-sm mx-auto leading-7">
+            Our team is reviewing your selection and will prepare a custom quote.
+            Check back here once you've been notified.
+          </p>
+
+          <button
+            onClick={handleCheckQuote}
+            disabled={checkingQuote}
+            className="mt-10 inline-flex items-center gap-2 border border-[#1A1A1A] px-8 py-4 disabled:opacity-60"
+          >
+            {checkingQuote && <Loader2 size={16} className="animate-spin" />}
+            {checkingQuote ? "Checking…" : "Check for Quote"}
+          </button>
+
+          <button
+            onClick={handleClose}
+            className="mt-4 block mx-auto text-sm text-[#8A8880] underline"
+          >
+            Close
+          </button>
+        </div>
+      )}
+
+      {/* ── Step 4: payment (Stripe Elements) ────────────────────────────── */}
+      {step === "payment" && clientSecret && quote && result && (
+        <div>
+          <h2 className="font-heading text-4xl mb-2">Complete Your Order</h2>
+          <p className="text-[#8A8880] mb-8">
+            Enter your payment details to confirm the design.
+          </p>
+
+          <Elements
+            stripe={stripePromise}
+            options={{
+              clientSecret,
+              appearance: {
+                theme: "stripe",
+                variables: {
+                  colorPrimary: "#C4974A",
+                  fontFamily: "inherit",
+                  borderRadius: "0px",
+                },
+              },
+            }}
+          >
+            <PaymentForm
+              orderId={result.orderId}
+              quoteAmount={quote.amount}
+              onSuccess={() => setStep("confirmed")}
+            />
+          </Elements>
+
+          <button
+            onClick={() => setStep("awaiting_quote")}
+            className="mt-4 text-sm text-[#8A8880] underline"
+          >
+            ← Back
+          </button>
+        </div>
+      )}
+
+      {/* ── Step 5: confirmed ─────────────────────────────────────────────── */}
+      {step === "confirmed" && (
+        <div className="text-center py-8">
+          <CheckCircle className="mx-auto text-[#C4974A]" size={48} />
+          <h2 className="font-heading text-4xl mt-6">Order Confirmed</h2>
+          <p className="mt-4 text-[#8A8880] max-w-sm mx-auto leading-7">
+            Payment received. Your custom garment is now in production. We'll
+            keep you updated at every step.
+          </p>
+          <button
+            onClick={handleClose}
+            className="mt-10 bg-[#1A1A1A] text-white px-10 py-4"
+          >
+            Done
           </button>
         </div>
       )}
