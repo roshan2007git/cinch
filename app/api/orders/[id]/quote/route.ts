@@ -14,7 +14,7 @@ export async function PATCH(
   }
 
   const { id } = await params;
-  const { amount, currency = "INR", notes = "" } = await req.json();
+  const { amount, currency = "inr" } = await req.json();
 
   if (typeof amount !== "number" || amount <= 0) {
     return Response.json({ error: "amount must be a positive number" }, { status: 400 });
@@ -35,7 +35,7 @@ export async function PATCH(
     );
   }
 
-  order.quote = { amount, currency, notes };
+  order.quote = { amount, currency };
   order.status = "quoted";
   await order.save();
 

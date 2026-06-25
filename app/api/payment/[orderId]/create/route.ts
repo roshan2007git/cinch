@@ -1,14 +1,13 @@
 import { NextRequest } from "next/server";
-import Razorpay from "razorpay";
+import Stripe from "stripe";
 import connectDB from "@/lib/db";
 import Order from "@/lib/models/order";
 import { getStubUserId } from "@/lib/auth";
 
-function getRazorpay() {
-  const key_id = process.env.RAZORPAY_KEY_ID;
-  const key_secret = process.env.RAZORPAY_KEY_SECRET;
-  if (!key_id || !key_secret) throw new Error("Razorpay keys not configured");
-  return new Razorpay({ key_id, key_secret });
+function getStripe() {
+  const key = process.env.STRIPE_SECRET_KEY;
+  if (!key) throw new Error("STRIPE_SECRET_KEY is not configured");
+  return new Stripe(key);
 }
 
 export async function POST(
@@ -40,17 +39,12 @@ export async function POST(
     return Response.json({ error: "Order has no quote" }, { status: 400 });
   }
 
-  const razorpay = getRazorpay();
-  const razorpayOrder = await razorpay.orders.create({
-    amount: Math.round(order.quote.amount * 100), // paise
-    currency: order.quote.currency,
-    receipt: String(order._id),
+  const stripe = getStripe();
+  const paymentIntent = await stripe.paymentIntents.create({
+    amount: Math.round(order.quote.amount * 100), // paise (INR smallest unit)
+    currency: order.quote.currency ?? "inr",
+    metadata: { cinchOrderId: String(order._id), userId: String(userId) },
   });
 
-  return Response.json({
-    razorpayOrderId: razorpayOrder.id,
-    amount: razorpayOrder.amount,
-    currency: razorpayOrder.currency,
-    keyId: process.env.RAZORPAY_KEY_ID,
-  });
+  return Response.json({ clientSecret: paymentIntent.client_secret });
 }

@@ -26,11 +26,9 @@ export interface IOrder extends Document {
   quote?: {
     amount: number;
     currency: string;
-    notes: string;
   };
   payment?: {
-    orderId: string;
-    paymentId: string;
+    paymentIntentId: string;
     paidAt: Date;
   };
 }
@@ -65,12 +63,10 @@ const OrderSchema = new Schema<IOrder>(
     },
     quote: {
       amount: Number,
-      currency: { type: String, default: "INR" },
-      notes: String,
+      currency: { type: String, default: "inr" },
     },
     payment: {
-      orderId: String,
-      paymentId: String,
+      paymentIntentId: String,
       paidAt: Date,
     },
   },
