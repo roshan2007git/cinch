@@ -100,7 +100,7 @@ Example:
     const order = await Order.create({
       user: userId,
       designInput: { text: prompt, inspirationImageUrls },
-      measurementsSnapshot: user.measurements ?? {},
+      measurementsSnapshot: (user.measurements as any)?.toObject?.() ?? {},
       variations,
       status: "awaiting_selection",
     });

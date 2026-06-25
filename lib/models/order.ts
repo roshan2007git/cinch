@@ -47,7 +47,7 @@ const OrderSchema = new Schema<IOrder>(
       text: { type: String, required: true },
       inspirationImageUrls: [String],
     },
-    measurementsSnapshot: { type: Map, of: Number },
+    measurementsSnapshot: { type: Schema.Types.Mixed },
     variations: [VariationSchema],
     selectedVariationId: String,
     status: {
