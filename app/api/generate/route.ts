@@ -54,13 +54,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    if (limits.savedProjects !== null && user.usage.savedProjectsCount >= limits.savedProjects) {
-      return Response.json(
-        { error: "Saved projects limit reached", limit: limits.savedProjects, plan: user.plan },
-        { status: 429 }
-      );
-    }
-
     const numVariations = limits.variationsPerDesign;
 
     const systemPrompt = `You are a fashion design assistant for Cinch, a custom garment platform in India.
@@ -129,7 +122,6 @@ Example:
     });
 
     user.usage.generationsThisMonth += 1;
-    user.usage.savedProjectsCount += 1;
     await user.save();
 
     return Response.json({
