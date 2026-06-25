@@ -1,12 +1,12 @@
 import { NextRequest } from "next/server";
 import { GoogleGenAI } from "@google/genai";
-
-export const maxDuration = 60;
 import connectDB from "@/lib/db";
 import User from "@/lib/models/user";
 import Order from "@/lib/models/order";
 import { getOrCreateGuestUserId } from "@/lib/guest-auth";
 import { getLimits, currentYearMonth } from "@/lib/plans";
+
+export const maxDuration = 60;
 
 function getAI() {
   const apiKey = process.env.GEMINI_API_KEY;
@@ -15,6 +15,8 @@ function getAI() {
 }
 
 export async function POST(req: NextRequest) {
+  console.log("[generate] env check — GEMINI_API_KEY:", !!process.env.GEMINI_API_KEY, "MONGODB_URI:", !!process.env.MONGODB_URI, "STRIPE_SECRET_KEY:", !!process.env.STRIPE_SECRET_KEY);
+
   const userId = await getOrCreateGuestUserId(req);
 
   // TODO: image upload to cloud storage not yet implemented.
@@ -76,7 +78,13 @@ Return ONLY a valid JSON array with no markdown, no extra text. Each element mus
 Example:
 [{"name":"Ivory Evening Drape","description":"A flowing ivory gown...","estimatedMeasurements":{"chest":"36 inches"},"estimatedPriceInr":7500}]`;
 
-  const ai = getAI();
+  let ai;
+  try {
+    ai = getAI();
+  } catch {
+    return Response.json({ error: "AI service not configured" }, { status: 500 });
+  }
+
   let variations;
   try {
     const response = await ai.models.generateContent({
